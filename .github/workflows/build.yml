@@ -1,0 +1,21 @@
+name: Android Build
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get ROM
+        run: curl -L -o baserom.us.z64 "${{ secrets.ROM_URL }}"
+
+      - name: Setup & Build
+        run: |
+          # This part assumes you are using the VDavid003 or similar source
+          # It installs the necessary tools and runs the build command
+          sudo apt-get update
+          sudo apt-get install -y build-essential git python3 libglew-dev
+          # Replace the line below with the specific build command if you know it
+          # usually: make ANDROID=1
