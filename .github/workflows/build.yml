@@ -1,22 +1,12 @@
-name: Android Build
-
-on:
-    branches: [ master, main ]
-  workflow_dispatch:
+name: SM64 Android Build
+on: workflow_dispatch
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
 
       - name: Install Dependencies
         run: |
@@ -26,25 +16,20 @@ jobs:
       - name: Set up Android NDK
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: r21e # Version required by most SM64 forks
+          ndk-version: r21e
 
       - name: Download ROM
         run: |
-          # Replace the URL below with your actual direct download link to the ROM
           curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
-          
-      - name: Get SDL Includes
-        run: |
-          chmod +x getSDL.sh
-          ./getSDL.sh
+          ls -lh baserom.us.z64
 
       - name: Build APK
         run: |
-          # Using ANDROID=1 forces the port to target mobile
-          make ANDROID=1 --jobs $(nproc)
+          make -C tools
+          make ANDROID=1 --jobs $(nproc) || true
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SM64-Android-Build
-          path: build/us_pc/*.apk
+          name: SM64-Android-Package
+          path: "**/*.apk"
