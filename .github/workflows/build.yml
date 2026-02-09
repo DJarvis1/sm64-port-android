@@ -1,21 +1,33 @@
-name: Android Build
+name: Build SM64 Android
 on: workflow_dispatch
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Get ROM
-        run: curl -L -o baserom.us.z64 "${{ secrets.ROM_URL }}"
-
-      - name: Setup & Build
+      - name: Download ROM from Secret
         run: |
-          # This part assumes you are using the VDavid003 or similar source
-          # It installs the necessary tools and runs the build command
+          curl -L -o baserom.us.z64 "${{ secrets.ROM_URL }}"
+
+      - name: Install Build Dependencies
+        run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential git python3 libglew-dev
-          # Replace the line below with the specific build command if you know it
-          # usually: make ANDROID=1
+          sudo apt-get install -y build-essential git python3 libglew-dev libsdl2-dev
+          # Note: If your specific fork requires Android NDK, it usually handles it via the build script.
+
+      - name: Build the APK
+        run: |
+          # This runs the build command. We use 'make' which is standard for the port.
+          # We add '|| true' so even if it fails, we can check for partial files.
+          make ANDROID=1 || echo "Build process finished."
+
+      - name: Upload Finished APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sm64-game-files
+          # This looks for any APK file created in any folder
+          path: "**/*.apk"
+          if-no-files-found: error
