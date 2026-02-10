@@ -36,48 +36,42 @@ jobs:
       - name: Fix Manifest and Build
         run: |
           cd android
+          # Remove the corrupted file
+          rm -f AndroidManifest.xml
           
-          # 1. Delete the corrupted binary manifest
-          rm AndroidManifest.xml
-          
-          # 2. Create a fresh, clean text Manifest
-          cat <<EOF > AndroidManifest.xml
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-              package="com.vdavid003.sm64port">
-              <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="30" />
-              <application android:label="SM64 Android">
-                  <activity android:name="org.libsdl.app.SDLActivity" />
-              </application>
-          </manifest>
-          EOF
+          # Create a fresh text-based Manifest
+          echo '<?xml version="1.0" encoding="utf-8"?>' > AndroidManifest.xml
+          echo '<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.vdavid003.sm64port">' >> AndroidManifest.xml
+          echo '    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="30" />' >> AndroidManifest.xml
+          echo '    <application android:label="SM64 Android">' >> AndroidManifest.xml
+          echo '        <activity android:name="org.libsdl.app.SDLActivity" />' >> AndroidManifest.xml
+          echo '    </application>' >> AndroidManifest.xml
+          echo '</manifest>' >> AndroidManifest.xml
 
-          # 3. Find where Android.mk is actually hiding
-          MK_PATH=\$(find . -name "Android.mk" | head -n 1)
-          echo "Found Build Script at: \$MK_PATH"
+          # Find the actual build instructions
+          MK_PATH=$(find . -name "Android.mk" | head -n 1)
+          echo "Found Build Script at: $MK_PATH"
           
-          # 4. Build with the NDK
-          ndk-build \
-            NDK_PROJECT_PATH=. \
-            APP_BUILD_SCRIPT=\$MK_PATH \
-            APP_ABI=arm64-v8a \
-            -j$(nproc)
+          # Build it!
+          ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=$MK_PATH APP_ABI=arm64-v8a
 
       - name: Package Output
         run: |
           mkdir -p Finished_APK
-          # Capture the engine library
+          # Search for compiled .so files
           find android/ -name "*.so" -exec cp {} Finished_APK/ \;
           
-          # Zip everything up
-          if [ -n "\$(ls -A Finished_APK/*.so 2>/dev/null)" ]; then
-             zip -r Finished_APK/sm64_engine_libs.zip Finished_APK/
+          # Zip the engine and assets together
+          if [ -d "Finished_APK" ]; then
+             zip -r sm64_android_engine.zip Finished_APK/
           fi
 
       - name: Upload to Releases
         uses: softprops/action-gh-release@v2
         with:
-          files: Finished_APK/*
+          files: |
+            Finished_APK/*.so
+            *.zip
           tag_name: v1.${{ github.run_number }}
           name: SM64 Android Build #${{ github.run_number }}
         env:
