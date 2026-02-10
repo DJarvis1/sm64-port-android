@@ -37,17 +37,18 @@ jobs:
       - name: Build Tools
         run: make -C tools
 
-      - name: Build Full Game APK
+      - name: Build Full Game
         run: |
           python3 extract_assets.py us
-          # We add 'apk' at the end to force the packaging stage
-          make ANDROID=1 ARCH=aarch64 apk --jobs $(nproc)
+          # We use the generic make command but with Android flags enabled
+          make ANDROID=1 TARGET_ANDROID=1 ARCH=aarch64 --jobs $(nproc)
 
-      - name: Locate and Prepare APK
+      - name: Debug - List All Files
         run: |
+          echo "--- Searching for any created APK or Binaries ---"
+          find . -maxdepth 4 -not -path '*/.*'
           mkdir -p Finished_APK
-          echo "Checking for APK files..."
-          find . -name "*.apk" -ls
+          # Try to find the APK and copy it
           find . -name "*.apk" -exec cp {} Finished_APK/sm64_android.apk \;
 
       - name: Upload to Releases
