@@ -13,19 +13,18 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          submodules: 'recursive' # Fixes the "SDL2 undefined" error
+          submodules: 'recursive'
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
-          distribution: Thatcham  # Matches your local runner's default if needed, or use 'temurin'
+          distribution: 'temurin' # Corrected from Thatcham
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
       - name: Install NDK
-        # We use the NDK version specified in your crash logs
         run: echo "y" | sudo ${ANDROID_HOME}/tools/bin/sdkmanager --install "ndk;21.4.7075529"
 
       - name: Set up Python
@@ -52,12 +51,11 @@ jobs:
 
       - name: Build Extraction Tools & APK
         run: |
-          # STEP 1: Compile the tools that slice the ROM into C files
-          # This creates the 'n64graphics' and 'mio0' tools
+          # 1. Compile tools (mio0, n64graphics) to prevent 'alBnkfNew.c' error
           cd app/jni
           make -C tools
           
-          # STEP 2: Return to root and build the APK
+          # 2. Return to root and build the APK
           cd ../..
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace --no-daemon
