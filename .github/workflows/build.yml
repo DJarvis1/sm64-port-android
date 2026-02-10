@@ -15,7 +15,7 @@ jobs:
       - name: Set up NDK
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: r21e # This specific port needs an older NDK to work
+          ndk-version: r21e
 
       - name: Install Dependencies
         run: |
@@ -30,38 +30,50 @@ jobs:
         run: |
           make -C tools
           python3 extract_assets.py us
-          # Move textures where the Android C code expects them
           mkdir -p android/assets
           cp -r build/us_pc/res/* android/assets/ 2>/dev/null || true
 
-      - name: Fix and Build with NDK
+      - name: Fix Manifest and Build
         run: |
-          # 1. Navigate to the android folder
           cd android
           
-          # 2. The previous error 'invalid token' usually means the XML is corrupted 
-          # or uses features too new for the old NDK. We'll check it.
-          cat AndroidManifest.xml
+          # 1. Delete the corrupted binary manifest
+          rm AndroidManifest.xml
           
-          # 3. Build using the NDK directly from inside the folder
-          # We use 'V=1' to see EXACTLY what the compiler is doing if it fails
+          # 2. Create a fresh, clean text Manifest
+          cat <<EOF > AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="com.vdavid003.sm64port">
+              <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="30" />
+              <application android:label="SM64 Android">
+                  <activity android:name="org.libsdl.app.SDLActivity" />
+              </application>
+          </manifest>
+          EOF
+
+          # 3. Find where Android.mk is actually hiding
+          MK_PATH=\$(find . -name "Android.mk" | head -n 1)
+          echo "Found Build Script at: \$MK_PATH"
+          
+          # 4. Build with the NDK
           ndk-build \
             NDK_PROJECT_PATH=. \
-            APP_BUILD_SCRIPT=./Android.mk \
-            NDK_APPLICATION_MK=./Application.mk \
+            APP_BUILD_SCRIPT=\$MK_PATH \
             APP_ABI=arm64-v8a \
-            V=1
+            -j$(nproc)
 
       - name: Package Output
         run: |
           mkdir -p Finished_APK
-          # In this old style, results go into 'libs' or 'obj'
-          find android/libs/ -name "*.so" -exec cp {} Finished_APK/ \; || true
+          # Capture the engine library
+          find android/ -name "*.so" -exec cp {} Finished_APK/ \;
           
-          # Zip the resulting library and assets. 
-          # On Android, you can actually put these into a "Template APK" later.
-          zip -j Finished_APK/sm64.arm64.zip Finished_APK/*.so
-          
+          # Zip everything up
+          if [ -n "\$(ls -A Finished_APK/*.so 2>/dev/null)" ]; then
+             zip -r Finished_APK/sm64_engine_libs.zip Finished_APK/
+          fi
+
       - name: Upload to Releases
         uses: softprops/action-gh-release@v2
         with:
