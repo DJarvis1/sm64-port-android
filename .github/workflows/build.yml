@@ -4,6 +4,8 @@ on: workflow_dispatch
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # This allows GitHub to "write" the folder/release
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -19,17 +21,24 @@ jobs:
           ndk-version: r21e
 
       - name: Download ROM
-        run: |
-          curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
-          ls -lh baserom.us.z64
+        run: curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
 
       - name: Build APK
         run: |
           make -C tools
           make ANDROID=1 --jobs $(nproc) || true
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - name: Prepare Folder
+        run: |
+          mkdir -p Build_Output
+          cp build/us_pc/*.apk Build_Output/sm64_android.apk
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: SM64-Android-Package
-          path: "**/*.apk"
+          files: Build_Output/sm64_android.apk
+          tag_name: latest
+          name: Latest Android Build
+          body: "Your compiled SM64 APK is ready!"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
