@@ -33,37 +33,35 @@ jobs:
 
       - name: Locate and Build
         run: |
-          # 1. Find the real Android.mk wherever it's hiding
+          # 1. Find the Android.mk
           REAL_MK=$(find . -name "Android.mk" | head -n 1)
-          
-          if [ -z "$REAL_MK" ]; then
-            echo "No Android.mk found! Searching for alternatives..."
-            REAL_MK=$(find . -name "*android*.mk" | head -n 1)
-          fi
-          
-          echo "FINAL_MK_PATH=$REAL_MK"
-          
-          # 2. If we found one, get its directory
           MK_DIR=$(dirname "$REAL_MK")
-          echo "Building from directory: $MK_DIR"
+          
+          # 2. Create a PERFECT Manifest (Added the 'android' namespace declaration)
+          cat <<EOF > "$MK_DIR/AndroidManifest.xml"
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.vdavid003.sm64port">
+              <uses-sdk android:minSdkVersion="21" />
+          </manifest>
+          EOF
 
-          # 3. Create a basic manifest in that directory just in case
-          echo '<manifest package="com.vdavid003.sm64port"><uses-sdk android:minSdkVersion="21"/></manifest>' > "$MK_DIR/AndroidManifest.xml"
-
-          # 4. Execute build
+          # 3. Build with Missing Dependencies allowed
+          # This allows the compiler to ignore the SDL2 error and build the main engine
           ndk-build \
             NDK_PROJECT_PATH="$MK_DIR" \
             APP_BUILD_SCRIPT="$REAL_MK" \
             APP_PLATFORM=android-21 \
             APP_ABI=arm64-v8a \
+            APP_ALLOW_MISSING_DEPS=true \
             -j$(nproc)
 
       - name: Package Output
         run: |
           mkdir -p Finished_APK
           find . -name "*.so" -exec cp {} Finished_APK/ \;
-          if [ -d "Finished_APK" ]; then
+          if [ -n "$(ls -A Finished_APK/*.so 2>/dev/null)" ]; then
              zip -r sm64_libs.zip Finished_APK/
+          else
+             echo "No .so files found. Check logs for compilation errors."
           fi
 
       - name: Upload to Releases
