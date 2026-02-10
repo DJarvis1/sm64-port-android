@@ -29,8 +29,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config git python3 wget zip \
-            binutils-aarch64-linux-gnu libsdl2-dev libusb-1.0-dev
+          sudo apt-get install -y build-essential pkg-config git python3 wget zip
 
       - name: Download ROM
         run: |
@@ -41,29 +40,23 @@ jobs:
           make -C tools
           python3 extract_assets.py us
 
-      - name: Build Android APK
+      - name: Build with NDK
         run: |
-          # We define the include path for libusb manually to stop the error
-          export C_INCLUDE_PATH=/usr/include/libusb-1.0
-          export CPLUS_INCLUDE_PATH=/usr/include/libusb-1.0
-          
-          # We explicitly turn OFF the PC-specific controller drivers (WUP)
-          make ANDROID=1 \
-               TARGET_ANDROID=1 \
-               ARCH=aarch64 \
-               WUP_CONTROLLER=0 \
-               ENABLE_WIIU_GCN_ADAPTER=0 \
-               --jobs $(nproc)
+          # This triggers the specific Android compiler directly
+          $ANDROID_NDK_HOME/ndk-build APP_PLATFORM=android-21 APP_ABI=arm64-v8a -j$(nproc)
 
-      - name: Locate and Package
+      - name: Package Output
         run: |
           mkdir -p Finished_APK
-          echo "--- Checking build directory structure ---"
-          ls -R build/ || echo "Build folder not found"
+          echo "--- Locating Build Products ---"
+          # Look for the .so library or the APK
+          find libs/ -name "*.so" -exec cp {} Finished_APK/ \; || echo "No libs found"
+          find bin/ -name "*.apk" -exec cp {} Finished_APK/sm64_android.apk \; || echo "No APK found"
           
-          # Search for APK or the resulting shared library (.so)
-          find . -name "*.apk" -exec cp {} Finished_APK/sm64_android.apk \;
-          find build/ -name "*.so" -exec cp {} Finished_APK/ \;
+          # If we only got a .so file, zip it so we have something to download
+          if [ ! -f Finished_APK/sm64_android.apk ]; then
+             zip -r Finished_APK/android_assets.zip assets/
+          fi
 
       - name: Upload to Releases
         uses: softprops/action-gh-release@v2
