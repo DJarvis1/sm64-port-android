@@ -31,13 +31,13 @@ jobs:
       - name: Download ROM
         run: curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
 
-      - name: Inject and Force Align
+      - name: Inject and Align
         run: |
           git clone https://github.com/vdavid003/sm64-port-android-base wrapper
           cp -rn wrapper/* .
           chmod +x gradlew
           
-          # Move source to where the wrapper expects it
+          # Aligning source folders
           mkdir -p app/jni/src
           cp -r src/* app/jni/src/ 2>/dev/null || true
           cp -r include app/jni/ 2>/dev/null || true
@@ -46,7 +46,7 @@ jobs:
           cp -r textures app/jni/ 2>/dev/null || true
           cp Android.mk app/jni/ 2>/dev/null || true
           
-          # FORCE the NDK to ignore missing deps inside the config file itself
+          # Patch Application.mk to be permissive
           echo "APP_ALLOW_MISSING_DEPS := true" >> app/jni/Application.mk
           echo "APP_PLATFORM := android-16" >> app/jni/Application.mk
 
@@ -59,18 +59,18 @@ jobs:
           python3 tools/mario_anims_converter.py > app/jni/build/us_pc/assets/mario_anim_data.c
           python3 tools/demo_data_converter.py assets/demo_data.json -DVERSION_US > app/jni/build/us_pc/assets/demo_data.c
 
-      - name: Setup SDL2 (Android Version)
+      - name: Setup SDL2
         run: |
-          # Pulling a version of SDL2 that specifically has the Android.mk setup
+          # The NDK looks for a folder named 'SDL2' that contains its own Android.mk
           rm -rf app/jni/SDL2
           git clone --depth 1 https://github.com/libsdl-org/SDL.git -b SDL2 app/jni/SDL2
-          # Ensure NDK can find the SDL2 module by naming the directory exactly what it expects
-          mv app/jni/SDL2 app/jni/sdl2_ext 2>/dev/null || true
-          
+
       - name: Build APK
         run: |
-          # Running with a clean start and the force flag
-          ./gradlew assembleDebug -Pandroid.bundle.enableUncompressedNativeLibs=false
+          # NDK_MODULE_PATH tells the compiler where to look for the 'SDL2' module definition
+          ./gradlew assembleDebug -Pandroid.bundle.enableUncompressedNativeLibs=false \
+            -Pandroid.buildTypes.debug.ndk.arguments="NDK_MODULE_PATH=." \
+            -Pandroid.buildTypes.release.ndk.arguments="NDK_MODULE_PATH=."
 
       - name: Release APK
         uses: softprops/action-gh-release@v2
