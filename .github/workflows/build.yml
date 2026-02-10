@@ -30,7 +30,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential pkg-config git python3 wget zip \
-            binutils-aarch64-linux-gnu libsdl2-dev libusb-1.0-0-dev
+            binutils-aarch64-linux-gnu libsdl2-dev libusb-1.0-dev
 
       - name: Download ROM
         run: |
@@ -43,29 +43,27 @@ jobs:
 
       - name: Build Android APK
         run: |
-          # We are using every common flag found in SM64 Android ports
+          # We define the include path for libusb manually to stop the error
+          export C_INCLUDE_PATH=/usr/include/libusb-1.0
+          export CPLUS_INCLUDE_PATH=/usr/include/libusb-1.0
+          
+          # We explicitly turn OFF the PC-specific controller drivers (WUP)
           make ANDROID=1 \
                TARGET_ANDROID=1 \
                ARCH=aarch64 \
-               CROSS_COMPILE=aarch64-linux-gnu- \
-               NDK_BACKEND=1 \
+               WUP_CONTROLLER=0 \
+               ENABLE_WIIU_GCN_ADAPTER=0 \
                --jobs $(nproc)
 
       - name: Locate and Package
         run: |
           mkdir -p Finished_APK
-          echo "--- Searching for output files ---"
-          # This will show us exactly what was built in the logs
-          find build/ -type f -not -name "*.o" -not -name "*.d"
+          echo "--- Checking build directory structure ---"
+          ls -R build/ || echo "Build folder not found"
           
-          # If it built an APK, grab it
+          # Search for APK or the resulting shared library (.so)
           find . -name "*.apk" -exec cp {} Finished_APK/sm64_android.apk \;
-          
-          # If it built a binary but no APK, we'll zip the binary as a fallback
-          if [ ! -f Finished_APK/sm64_android.apk ]; then
-            echo "No APK found, checking for Android binaries..."
-            find build/ -name "*sm64*" -type f -exec cp {} Finished_APK/sm64_executable \;
-          fi
+          find build/ -name "*.so" -exec cp {} Finished_APK/ \;
 
       - name: Upload to Releases
         uses: softprops/action-gh-release@v2
