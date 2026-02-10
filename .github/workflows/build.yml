@@ -12,10 +12,10 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Set up JDK 17
+      - name: Set up JDK 11
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '11'
           distribution: 'temurin'
 
       - name: Set up NDK
@@ -29,14 +29,13 @@ jobs:
           sudo apt-get install -y build-essential pkg-config git python3 wget zip libsdl2-dev libaudiofile-dev
 
       - name: Download ROM
-          # Note: Ensure ROM_URL secret is still active
         run: curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
 
       - name: Inject Android Wrapper
         run: |
-          # We clone a base Android project to get the gradlew and Java files
           git clone https://github.com/vdavid003/sm64-port-android-base wrapper
-          cp -r wrapper/* .
+          # Copy everything EXCEPT the hidden .git folder to avoid repo conflicts
+          cp -rn wrapper/* . 
           chmod +x gradlew
 
       - name: Prepare Assets
@@ -45,13 +44,10 @@ jobs:
           python3 extract_assets.py us
           mkdir -p build/us_pc/assets
           mkdir -p build/us_pc/bin
-          
-          # Manually generate game data
           python3 tools/mario_anims_converter.py > build/us_pc/assets/mario_anim_data.c
           python3 tools/demo_data_converter.py assets/demo_data.json -DVERSION_US > build/us_pc/assets/demo_data.c
           
-          # Fix for your specific skyconv version
-          # It uses --split instead of direct generation
+          # Using the split command for your specific skyconv version
           for f in textures/skyboxes/*.png; do
             filename=$(basename "$f" .png)
             ./tools/skyconv --type sky --split "$f" "build/us_pc/bin/${filename}.c" || true
@@ -59,17 +55,16 @@ jobs:
 
       - name: Setup SDL2
         run: |
-          # Find the jni folder in the newly injected wrapper
-          JNI_DIR=$(find . -name "jni" -type d | head -n 1)
-          mkdir -p "$JNI_DIR/SDL2"
-          git clone --depth 1 https://github.com/libsdl-org/SDL.git -b SDL2 "$JNI_DIR/SDL2"
-          find "$JNI_DIR/SDL2" -name "AndroidManifest.xml" -delete
-          cp "$JNI_DIR/SDL2/include/SDL_config_android.h" "$JNI_DIR/SDL2/include/SDL_config.h" || true
+          # The wrapper creates an 'app/jni' directory
+          mkdir -p app/jni/SDL2
+          git clone --depth 1 https://github.com/libsdl-org/SDL.git -b SDL2 app/jni/SDL2
+          find app/jni/SDL2 -name "AndroidManifest.xml" -delete
+          cp app/jni/SDL2/include/SDL_config_android.h app/jni/SDL2/include/SDL_config.h || true
 
       - name: Build APK
         run: |
-          # Use the injected gradlew to build the installer
-          ./gradlew assembleDebug
+          # 'clean' clears out the 8s failure from last time
+          ./gradlew clean assembleDebug --stacktrace
 
       - name: Release APK
         uses: softprops/action-gh-release@v2
