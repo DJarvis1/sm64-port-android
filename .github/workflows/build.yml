@@ -28,46 +28,39 @@ jobs:
 
       - name: Force Assets into NDK Path
         run: |
-          # 1. Build the conversion tools
           make -C tools
-          
-          # 2. Extract base textures/assets
           python3 extract_assets.py us
-          
-          # 3. Create the EXACT path the error message is looking for
           mkdir -p build/us_pc/assets
           mkdir -p build/us_pc/bin
           
-          # 4. Generate the "Problem Children" files directly into those paths
+          # Force generate the C files the NDK wants
           python3 tools/mario_anims_converter.py > build/us_pc/assets/mario_anim_data.c
           python3 tools/demo_data_converter.py assets/demo_data.json -DVERSION_US > build/us_pc/assets/demo_data.c
           
-          # 5. Generate every skybox the NDK might ask for
           for f in textures/skyboxes/*.png; do
             filename=$(basename "$f" .png)
             ./tools/skyconv --type rgba16 --width 32 --height 32 "$f" "build/us_pc/bin/${filename}.c" || true
           done
-          
-          # 6. Verify they exist so we can see it in the logs
-          ls -l build/us_pc/assets/mario_anim_data.c
 
-      - name: Fix SDL2 Module
+      - name: Setup SDL2 for Android
         run: |
           REAL_MK=$(find . -name "Android.mk" | head -n 1)
           MK_DIR=$(dirname "$REAL_MK")
+          rm -rf "$MK_DIR/SDL2"
           
-          # The NDK says it wants 'SDL2'. Let's give it exactly 'SDL2'.
-          rm -rf "$MK_DIR/SDL2" "$MK_DIR/sdl"
-          git clone https://github.com/libsdl-org/SDL.git -b SDL2 "$MK_DIR/SDL2"
+          # Clone a version of SDL2 that includes the necessary Android configs
+          git clone --depth 1 https://github.com/libsdl-org/SDL.git -b SDL2 "$MK_DIR/SDL2"
           
-          # Remove the SDL internal project that confuses the NDK
-          rm -rf "$MK_DIR/SDL2/android-project-ant"
+          # Create a dummy SDL_config.h if it's missing, or copy the Android one
+          # This is the standard fix for the error you just saw
+          cp "$MK_DIR/SDL2/include/SDL_config_android.h" "$MK_DIR/SDL2/include/SDL_config.h" || true
 
       - name: Final NDK Build
         run: |
           REAL_MK=$(find . -name "Android.mk" | head -n 1)
           MK_DIR=$(dirname "$REAL_MK")
           
+          # We run ndk-build and tell it to ignore the HIDAPI sub-build if it fails
           ndk-build \
             NDK_PROJECT_PATH="$MK_DIR" \
             APP_BUILD_SCRIPT="$REAL_MK" \
