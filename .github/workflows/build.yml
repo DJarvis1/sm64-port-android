@@ -3,7 +3,7 @@ on: workflow_dispatch
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04 # We are using an older, more compatible Linux
     permissions:
       contents: write
     steps:
@@ -13,7 +13,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config git python3 wget zip binutils-aarch64-linux-gnu
+          sudo apt-get install -y build-essential pkg-config git python3 wget zip binutils-aarch64-linux-gnu python3-pip libsdl2-dev
 
       - name: Set up Android NDK
         uses: nttld/setup-ndk@v1
@@ -23,25 +23,24 @@ jobs:
       - name: Download ROM
         run: |
           curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
-          if [ ! -s baserom.us.z64 ]; then echo "ROM is missing!"; exit 1; fi
+          if [ ! -s baserom.us.z64 ]; then echo "ROM IS MISSING"; exit 1; fi
+
+      - name: Build Tools and Assets
+        run: |
+          make -C tools
+          python3 extract_assets.py us
 
       - name: Build APK
         run: |
-          make -C tools
-          # Some forks require specific flags. We try the most common ones.
-          make ANDROID=1 --jobs $(nproc)
+          # V=1 helps us see the exact error if it fails again
+          make ANDROID=1 V=1 --jobs $(nproc)
 
-      - name: Debug - List All Files
-        run: |
-          echo "Searching for APKs..."
-          find . -name "*.apk"
-          
       - name: Create Release
+        if: success()
         uses: softprops/action-gh-release@v2
         with:
           files: "**/*.apk"
           tag_name: v1.${{ github.run_number }}
           name: SM64 Build #${{ github.run_number }}
-          body: "Click the .apk file below to download."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
