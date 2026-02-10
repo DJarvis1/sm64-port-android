@@ -37,7 +37,7 @@ jobs:
           cp -rn wrapper/* .
           chmod +x gradlew
           
-          # Aligning source folders
+          # Clean and align folders
           mkdir -p app/jni/src
           cp -r src/* app/jni/src/ 2>/dev/null || true
           cp -r include app/jni/ 2>/dev/null || true
@@ -46,7 +46,7 @@ jobs:
           cp -r textures app/jni/ 2>/dev/null || true
           cp Android.mk app/jni/ 2>/dev/null || true
           
-          # Patch Application.mk to be permissive
+          # Force permissive NDK settings
           echo "APP_ALLOW_MISSING_DEPS := true" >> app/jni/Application.mk
           echo "APP_PLATFORM := android-16" >> app/jni/Application.mk
 
@@ -61,16 +61,18 @@ jobs:
 
       - name: Setup SDL2
         run: |
-          # The NDK looks for a folder named 'SDL2' that contains its own Android.mk
           rm -rf app/jni/SDL2
           git clone --depth 1 https://github.com/libsdl-org/SDL.git -b SDL2 app/jni/SDL2
+          # Create a symlink so the compiler finds it regardless of the pathing style
+          ln -s SDL2 app/jni/SDL
 
       - name: Build APK
         run: |
-          # NDK_MODULE_PATH tells the compiler where to look for the 'SDL2' module definition
+          # We use -j2 instead of -j4 to prevent the runner from running out of memory
+          # And we keep the NDK_MODULE_PATH fix
           ./gradlew assembleDebug -Pandroid.bundle.enableUncompressedNativeLibs=false \
-            -Pandroid.buildTypes.debug.ndk.arguments="NDK_MODULE_PATH=." \
-            -Pandroid.buildTypes.release.ndk.arguments="NDK_MODULE_PATH=."
+            -Pandroid.buildTypes.debug.ndk.arguments="NDK_MODULE_PATH=. -j2" \
+            -Pandroid.buildTypes.release.ndk.arguments="NDK_MODULE_PATH=. -j2"
 
       - name: Release APK
         uses: softprops/action-gh-release@v2
