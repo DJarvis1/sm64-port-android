@@ -19,13 +19,10 @@ jobs:
         uses: actions/setup-java@v4
         with:
           java-version: '17'
-          distribution: 'temurin' # Corrected from Thatcham
+          distribution: 'temurin'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-
-      - name: Install NDK
-        run: echo "y" | sudo ${ANDROID_HOME}/tools/bin/sdkmanager --install "ndk;21.4.7075529"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -39,27 +36,26 @@ jobs:
 
       - name: Fetch ROM from Secret
         run: |
-          # Uses your existing Secret. Ensure the URL ends in ?dl=1
           curl -L "${{ secrets.DROPBOX_ROM_URL }}" -o baserom.us.z64
           
-          # Validation: Ensure it's not an empty file or HTML page
           FILESIZE=$(stat -c%s "baserom.us.z64")
           if [ $FILESIZE -lt 8000000 ]; then
             echo "Error: ROM file is too small ($FILESIZE bytes). Check Secret URL."
             exit 1
           fi
 
-      - name: Build Extraction Tools & APK
+      - name: Build APK
         run: |
-          # 1. Compile tools (mio0, n64graphics) to prevent 'alBnkfNew.c' error
+          # 1. Build the extraction tools first
           cd app/jni
           make -C tools
-          
-          # 2. Return to root and build the APK
           cd ../..
+          
+          # 2. Build the APK. Gradle will auto-download the correct NDK version
+          # based on what is in your 'app/build.gradle' file.
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace --no-daemon
-
+          
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
