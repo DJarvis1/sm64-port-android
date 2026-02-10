@@ -36,28 +36,31 @@ jobs:
 
       - name: Fetch ROM from Secret
         run: |
-          if [ -z "${{ secrets.ROM_URL }}" ]; then
-            echo "Error: Secret ROM_URL is not set."
-            exit 1
-          fi
           curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
-          ls -lh baserom.us.z64
+          # The extraction script usually looks for the ROM in the same folder as the Makefile
+          # Let's put a copy everywhere important just to be safe
+          find . -name "jni" -exec cp baserom.us.z64 {}/.. \; 2>/dev/null || true
 
       - name: Build Extraction Tools
         run: |
-          # Find where the Makefile for tools is located
           TOOLS_DIR=$(find . -name "tools" -type d -path "*/jni/*" | head -n 1)
-          if [ -z "$TOOLS_DIR" ]; then
-            echo "Searching for any tools directory..."
-            TOOLS_DIR=$(find . -name "tools" -type d | head -n 1)
-          fi
-          
-          echo "Found tools directory at: $TOOLS_DIR"
+          if [ -z "$TOOLS_DIR" ]; then TOOLS_DIR=$(find . -name "tools" -type d | head -n 1); fi
+          echo "Found tools at: $TOOLS_DIR"
           make -C "$TOOLS_DIR"
 
       - name: Build APK
         run: |
-          # Ensure gradlew is executable and run it from the project root
+          # Find the gradlew file
+          GRADLE_PATH=$(find . -name "gradlew" | head -n 1)
+          if [ -z "$GRADLE_PATH" ]; then
+            echo "Error: Could not find gradlew in the repository."
+            exit 1
+          fi
+          
+          GRADLE_DIR=$(dirname "$GRADLE_PATH")
+          echo "Found Gradle at: $GRADLE_DIR"
+          
+          cd "$GRADLE_DIR"
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace --no-daemon
 
