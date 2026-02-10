@@ -36,26 +36,32 @@ jobs:
 
       - name: Fetch ROM from Secret
         run: |
-          curl -L "${{ secrets.DROPBOX_ROM_URL }}" -o baserom.us.z64
+          # Using your secret name: ROM_URL
+          if [ -z "${{ secrets.ROM_URL }}" ]; then
+            echo "Error: Secret ROM_URL is not set in GitHub Settings."
+            exit 1
+          fi
           
+          curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
+          
+          # Validation: ROM should be ~8MB (8,388,608 bytes)
           FILESIZE=$(stat -c%s "baserom.us.z64")
           if [ $FILESIZE -lt 8000000 ]; then
-            echo "Error: ROM file is too small ($FILESIZE bytes). Check Secret URL."
+            echo "Error: ROM file is too small ($FILESIZE bytes). Check your Dropbox link ends in ?dl=1"
             exit 1
           fi
 
       - name: Build APK
         run: |
-          # 1. Build the extraction tools first
+          # 1. Build extraction tools (fixes the alBnkfNew.c error)
           cd app/jni
           make -C tools
           cd ../..
           
-          # 2. Build the APK. Gradle will auto-download the correct NDK version
-          # based on what is in your 'app/build.gradle' file.
+          # 2. Build APK (Gradle will handle the NDK)
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace --no-daemon
-          
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
