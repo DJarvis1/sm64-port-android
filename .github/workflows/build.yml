@@ -20,42 +20,42 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config git python3 wget zip libsdl2-dev libaudiofile-dev
+          sudo apt-get install -y build-essential pkg-config git python3 wget zip libsdl2-dev libaudiofile-dev libglew-dev
 
       - name: Download ROM
         run: |
           curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
 
-      - name: Deep Asset Generation
+      - name: Generate All Assets
         run: |
           # 1. Build the tools
           make -C tools
           
-          # 2. Extract assets
+          # 2. Extract textures/sounds
           python3 extract_assets.py us
           
-          # 3. Explicitly build the "bin" and "levels" targets
-          # This is the "Magic Fix" for the missing .c files in the bin/ folder
-          make VERSION=us -j$(nproc) bin/ccm_skybox.c || true
-          make VERSION=us -j$(nproc) assets/mario_anim_data.c
+          # 3. Create the directory structure manually to avoid "No rule" errors
+          mkdir -p build/us_pc/bin
+          mkdir -p build/us_pc/assets
           
-          # Force a pass over levels and bin to generate all .c files
-          # We use '|| true' because we don't care if the final PC link fails
-          make VERSION=us -j$(nproc) build/us_pc/bin/ccm_skybox.c
-          make VERSION=us -j$(nproc) build/us_pc/levels/level_rules.mk || true
+          # 4. Run the PC build to generate ALL .c files. 
+          # We use '|| true' because it will fail at the very end when trying 
+          # to create a Linux executable, but it will create the .c files first.
+          make VERSION=us -j$(nproc) || true
 
       - name: Locate and Build Android
         run: |
           REAL_MK=$(find . -name "Android.mk" | head -n 1)
           MK_DIR=$(dirname "$REAL_MK")
           
+          # Create a basic manifest
           cat <<EOF > "$MK_DIR/AndroidManifest.xml"
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.vdavid003.sm64port">
               <uses-sdk android:minSdkVersion="21" />
           </manifest>
           EOF
 
-          # Build with NDK
+          # Start the actual NDK build
           ndk-build \
             NDK_PROJECT_PATH="$MK_DIR" \
             APP_BUILD_SCRIPT="$REAL_MK" \
@@ -67,6 +67,7 @@ jobs:
       - name: Package Output
         run: |
           mkdir -p Finished_APK
+          # Find the compiled .so files (the actual game engine)
           find . -name "*.so" -exec cp {} Finished_APK/ \;
           if [ -n "$(ls -A Finished_APK/*.so 2>/dev/null)" ]; then
              zip -r sm64_android_libs.zip Finished_APK/
