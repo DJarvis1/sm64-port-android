@@ -28,24 +28,15 @@ jobs:
 
       - name: Manual Asset Generation
         run: |
-          # 1. Build the tools (we need skyconv and others)
           make -C tools
-          
-          # 2. Extract base assets
           python3 extract_assets.py us
-          
-          # 3. Force create the directory structure
           mkdir -p build/us_pc/assets
           mkdir -p build/us_pc/bin
           
-          # 4. Manually run the converters that the Makefile is skipping
-          # Mario Anims
+          # Manually generate the files that were missing before
           python3 tools/mario_anims_converter.py > build/us_pc/assets/mario_anim_data.c
-          
-          # Demo Data
           python3 tools/demo_data_converter.py assets/demo_data.json -DVERSION_US > build/us_pc/assets/demo_data.c
           
-          # Skyboxes (Iterate through all pngs in the skybox folder)
           for f in textures/skyboxes/*.png; do
             filename=$(basename "$f" .png)
             ./tools/skyconv --type rgba16 --width 32 --height 32 "$f" "build/us_pc/bin/${filename}.c" || true
@@ -56,11 +47,14 @@ jobs:
           REAL_MK=$(find . -name "Android.mk" | head -n 1)
           MK_DIR=$(dirname "$REAL_MK")
           
-          # Fix the SDL2 'undefined module' error by cloning the source into the JNI folder
-          if [ ! -d "$MK_DIR/SDL2" ]; then
-            git clone https://github.com/libsdl-org/SDL.git -b SDL2 "$MK_DIR/SDL2"
-          fi
-
+          # Remove the messy clone from last time
+          rm -rf "$MK_DIR/SDL2"
+          
+          # Clone the specific SDL version for SM64 Android
+          # Most forks expect SDL to be in a folder named 'sdl' or 'SDL' inside the jni folder
+          git clone https://github.com/libsdl-org/SDL.git -b SDL2 "$MK_DIR/sdl"
+          
+          # Create a basic manifest
           cat <<EOF > "$MK_DIR/AndroidManifest.xml"
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.vdavid003.sm64port">
               <uses-sdk android:minSdkVersion="21" />
@@ -72,9 +66,11 @@ jobs:
           REAL_MK=$(find . -name "Android.mk" | head -n 1)
           MK_DIR=$(dirname "$REAL_MK")
           
+          # We define NDK_MODULE_PATH so it can find SDL2
           ndk-build \
             NDK_PROJECT_PATH="$MK_DIR" \
             APP_BUILD_SCRIPT="$REAL_MK" \
+            NDK_MODULE_PATH="$MK_DIR" \
             APP_PLATFORM=android-21 \
             APP_ABI=arm64-v8a \
             APP_ALLOW_MISSING_DEPS=true \
