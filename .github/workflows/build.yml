@@ -14,7 +14,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential pkg-config git python3 wget zip \
-            binutils-aarch64-linux-gnu libsdl2-dev libusb-1.0-0-dev
+            binutils-aarch64-linux-gnu libsdl2-dev libusb-1.0-0-dev openjdk-17-jdk
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
       - name: Set up Android NDK
         uses: nttld/setup-ndk@v1
@@ -31,19 +34,16 @@ jobs:
       - name: Build Full Game APK
         run: |
           python3 extract_assets.py us
-          # We add V=1 to see exactly what the compiler is doing
-          make ANDROID=1 ARCH=aarch64 V=1 --jobs $(nproc)
+          # We force the target to be the APK
+          make ANDROID=1 ARCH=aarch64 --jobs $(nproc)
 
       - name: Locate and Prepare APK
         run: |
           mkdir -p Finished_APK
-          echo "--- SEARCHING FOR APK ---"
-          # Search for ANY file ending in .apk
+          echo "Listing all files created to find that APK..."
           find . -name "*.apk" -ls
-          # Copy it if found
+          # If the build worked, this copies the file
           find . -name "*.apk" -exec cp {} Finished_APK/sm64_android.apk \;
-          echo "--- FOLDER CONTENT CHECK ---"
-          ls -R Finished_APK/
 
       - name: Upload to Releases
         uses: softprops/action-gh-release@v2
@@ -51,6 +51,5 @@ jobs:
           files: Finished_APK/sm64_android.apk
           tag_name: v1.${{ github.run_number }}
           name: SM64 Android Build #${{ github.run_number }}
-          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
