@@ -43,29 +43,34 @@ jobs:
 
       - name: Build Android APK
         run: |
-          # If a 'gradlew' exists anywhere, find it and run it
-          GRADLE_PATH=$(find . -name gradlew | head -n 1)
-          if [ -z "$GRADLE_PATH" ]; then
-            echo "No gradlew found, trying standard make"
-            make ANDROID=1 ARCH=aarch64 --jobs $(nproc)
-          else
-            echo "Found gradlew at $GRADLE_PATH"
-            chmod +x "$GRADLE_PATH"
-            cd $(dirname "$GRADLE_PATH")
-            ./gradlew assembleDebug
-          fi
+          # We are using every common flag found in SM64 Android ports
+          make ANDROID=1 \
+               TARGET_ANDROID=1 \
+               ARCH=aarch64 \
+               CROSS_COMPILE=aarch64-linux-gnu- \
+               NDK_BACKEND=1 \
+               --jobs $(nproc)
 
-      - name: Final Search and Release
+      - name: Locate and Package
         run: |
           mkdir -p Finished_APK
-          find . -name "*.apk" -ls
+          echo "--- Searching for output files ---"
+          # This will show us exactly what was built in the logs
+          find build/ -type f -not -name "*.o" -not -name "*.d"
+          
+          # If it built an APK, grab it
           find . -name "*.apk" -exec cp {} Finished_APK/sm64_android.apk \;
+          
+          # If it built a binary but no APK, we'll zip the binary as a fallback
+          if [ ! -f Finished_APK/sm64_android.apk ]; then
+            echo "No APK found, checking for Android binaries..."
+            find build/ -name "*sm64*" -type f -exec cp {} Finished_APK/sm64_executable \;
+          fi
 
       - name: Upload to Releases
         uses: softprops/action-gh-release@v2
-        if: success()
         with:
-          files: Finished_APK/sm64_android.apk
+          files: Finished_APK/*
           tag_name: v1.${{ github.run_number }}
           name: SM64 Android Build #${{ github.run_number }}
         env:
