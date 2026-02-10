@@ -33,7 +33,7 @@ jobs:
           mkdir -p build/us_pc/assets
           mkdir -p build/us_pc/bin
           
-          # Force generate the C files the NDK wants
+          # Manually generate assets to ensure no "No rule to make target" errors
           python3 tools/mario_anims_converter.py > build/us_pc/assets/mario_anim_data.c
           python3 tools/demo_data_converter.py assets/demo_data.json -DVERSION_US > build/us_pc/assets/demo_data.c
           
@@ -42,17 +42,22 @@ jobs:
             ./tools/skyconv --type rgba16 --width 32 --height 32 "$f" "build/us_pc/bin/${filename}.c" || true
           done
 
-      - name: Setup SDL2 for Android
+      - name: Setup SDL2 (Isolated)
         run: |
           REAL_MK=$(find . -name "Android.mk" | head -n 1)
           MK_DIR=$(dirname "$REAL_MK")
-          rm -rf "$MK_DIR/SDL2"
           
-          # Clone a version of SDL2 that includes the necessary Android configs
+          # 1. Clean up everything first
+          rm -rf "$MK_DIR/SDL2" "$MK_DIR/sdl"
+          
+          # 2. Clone SDL2 into a clean directory
           git clone --depth 1 https://github.com/libsdl-org/SDL.git -b SDL2 "$MK_DIR/SDL2"
           
-          # Create a dummy SDL_config.h if it's missing, or copy the Android one
-          # This is the standard fix for the error you just saw
+          # 3. CRITICAL: Delete any nested Android projects so NDK doesn't get confused
+          find "$MK_DIR/SDL2" -name "AndroidManifest.xml" -delete
+          find "$MK_DIR/SDL2" -name "Android.mk" -not -path "$MK_DIR/SDL2/Android.mk" -delete
+          
+          # 4. Set up the config header
           cp "$MK_DIR/SDL2/include/SDL_config_android.h" "$MK_DIR/SDL2/include/SDL_config.h" || true
 
       - name: Final NDK Build
@@ -60,14 +65,13 @@ jobs:
           REAL_MK=$(find . -name "Android.mk" | head -n 1)
           MK_DIR=$(dirname "$REAL_MK")
           
-          # We run ndk-build and tell it to ignore the HIDAPI sub-build if it fails
+          # Build only the main module and its dependencies
           ndk-build \
             NDK_PROJECT_PATH="$MK_DIR" \
             APP_BUILD_SCRIPT="$REAL_MK" \
             NDK_MODULE_PATH="$MK_DIR" \
             APP_PLATFORM=android-21 \
             APP_ABI=arm64-v8a \
-            APP_ALLOW_MISSING_DEPS=true \
             -j$(nproc)
 
       - name: Package Output
