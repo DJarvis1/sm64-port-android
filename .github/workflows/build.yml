@@ -34,14 +34,15 @@ jobs:
           # 2. Extract assets
           python3 extract_assets.py us
           
-          # 3. Force generate ALL C source files for assets
-          # This runs the 'assets' and 'bin' targets specifically
-          make VERSION=us -j$(nproc) build/us_pc/assets/mario_anim_data.c
-          make VERSION=us -j$(nproc) build/us_pc/assets/demo_data.c
+          # 3. Explicitly build the "bin" and "levels" targets
+          # This is the "Magic Fix" for the missing .c files in the bin/ folder
+          make VERSION=us -j$(nproc) bin/ccm_skybox.c || true
+          make VERSION=us -j$(nproc) assets/mario_anim_data.c
           
-          # This command attempts to build all binaries/levels but skips the final link
-          # so it doesn't fail on missing Linux audio libraries.
-          make VERSION=us OBJS_ONLY=1 -j$(nproc) || true
+          # Force a pass over levels and bin to generate all .c files
+          # We use '|| true' because we don't care if the final PC link fails
+          make VERSION=us -j$(nproc) build/us_pc/bin/ccm_skybox.c
+          make VERSION=us -j$(nproc) build/us_pc/levels/level_rules.mk || true
 
       - name: Locate and Build Android
         run: |
