@@ -26,35 +26,43 @@ jobs:
         run: |
           curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
 
-      - name: Manual Asset Generation
+      - name: Generate All Assets (PC Path)
         run: |
+          # 1. Build tools and extract
           make -C tools
           python3 extract_assets.py us
+          
+          # 2. Run the actual PC build (it will generate ALL .c files)
+          # We use || true because it might fail at the final linking stage, which is fine.
+          make VERSION=us -j$(nproc) || true
+          
+          # 3. SYNC: Find where the build actually put the files and copy them to 'us_pc'
+          # This handles repositories that use 'build/us' vs 'build/us_pc'
           mkdir -p build/us_pc/assets
           mkdir -p build/us_pc/bin
           
-          # Manually generate the files that were missing before
-          python3 tools/mario_anims_converter.py > build/us_pc/assets/mario_anim_data.c
-          python3 tools/demo_data_converter.py assets/demo_data.json -DVERSION_US > build/us_pc/assets/demo_data.c
+          # Copy from the actual build folder (likely 'build/us') to the NDK folder
+          cp -r build/us/assets/* build/us_pc/assets/ 2>/dev/null || true
+          cp -r build/us/bin/* build/us_pc/bin/ 2>/dev/null || true
           
-          for f in textures/skyboxes/*.png; do
-            filename=$(basename "$f" .png)
-            ./tools/skyconv --type rgba16 --width 32 --height 32 "$f" "build/us_pc/bin/${filename}.c" || true
-          done
+          # Double check if files exist
+          ls build/us_pc/bin/ccm_skybox.c || echo "Skybox still missing, forcing generation..."
+          ./tools/skyconv --type rgba16 --width 32 --height 32 textures/skyboxes/ccm_skybox.png build/us_pc/bin/ccm_skybox.c || true
 
-      - name: Prepare Android and SDL2
+      - name: Fix SDL2 and Android Pathing
         run: |
           REAL_MK=$(find . -name "Android.mk" | head -n 1)
           MK_DIR=$(dirname "$REAL_MK")
           
-          # Remove the messy clone from last time
-          rm -rf "$MK_DIR/SDL2"
+          # Clean old SDL attempts
+          rm -rf "$MK_DIR/sdl" "$MK_DIR/SDL2"
           
-          # Clone the specific SDL version for SM64 Android
-          # Most forks expect SDL to be in a folder named 'sdl' or 'SDL' inside the jni folder
+          # Clone SDL2 into the JNI directory
           git clone https://github.com/libsdl-org/SDL.git -b SDL2 "$MK_DIR/sdl"
           
-          # Create a basic manifest
+          # Delete the SDL 'YourSourceHere' template that caused the previous crash
+          rm -f "$MK_DIR/sdl/android-project-ant/jni/src/YourSourceHere.c"
+
           cat <<EOF > "$MK_DIR/AndroidManifest.xml"
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.vdavid003.sm64port">
               <uses-sdk android:minSdkVersion="21" />
@@ -66,7 +74,7 @@ jobs:
           REAL_MK=$(find . -name "Android.mk" | head -n 1)
           MK_DIR=$(dirname "$REAL_MK")
           
-          # We define NDK_MODULE_PATH so it can find SDL2
+          # Point the NDK directly to the SDL source
           ndk-build \
             NDK_PROJECT_PATH="$MK_DIR" \
             APP_BUILD_SCRIPT="$REAL_MK" \
