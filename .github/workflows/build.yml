@@ -42,20 +42,31 @@ jobs:
 
       - name: Build with NDK
         run: |
-          # This triggers the specific Android compiler directly
-          $ANDROID_NDK_HOME/ndk-build APP_PLATFORM=android-21 APP_ABI=arm64-v8a -j$(nproc)
+          # We search for the folder containing 'AndroidManifest.xml' 
+          # which is the heart of an Android project.
+          PROJECT_DIR=$(find . -name "AndroidManifest.xml" -exec dirname {} \; | head -n 1)
+          echo "Found Android project at: $PROJECT_DIR"
+          
+          # Now we run the build pointing directly to that folder
+          $ANDROID_NDK_HOME/ndk-build \
+            NDK_PROJECT_PATH=$PROJECT_DIR \
+            APP_BUILD_SCRIPT=$PROJECT_DIR/Android.mk \
+            NDK_APPLICATION_MK=$PROJECT_DIR/Application.mk \
+            APP_PLATFORM=android-21 \
+            APP_ABI=arm64-v8a \
+            -j$(nproc)
 
       - name: Package Output
         run: |
           mkdir -p Finished_APK
-          echo "--- Locating Build Products ---"
-          # Look for the .so library or the APK
-          find libs/ -name "*.so" -exec cp {} Finished_APK/ \; || echo "No libs found"
-          find bin/ -name "*.apk" -exec cp {} Finished_APK/sm64_android.apk \; || echo "No APK found"
+          # Search for the newly compiled library (.so) or APK
+          find . -name "*.so" -exec cp {} Finished_APK/ \;
+          find . -name "*.apk" -exec cp {} Finished_APK/sm64_android.apk \;
           
-          # If we only got a .so file, zip it so we have something to download
-          if [ ! -f Finished_APK/sm64_android.apk ]; then
-             zip -r Finished_APK/android_assets.zip assets/
+          # If we have the .so but no APK, we'll zip it up
+          if [ -n "$(ls -A Finished_APK/*.so 2>/dev/null)" ] && [ ! -f Finished_APK/sm64_android.apk ]; then
+             echo "Compiled successfully, zipping results..."
+             zip -r Finished_APK/android_build_results.zip Finished_APK/
           fi
 
       - name: Upload to Releases
