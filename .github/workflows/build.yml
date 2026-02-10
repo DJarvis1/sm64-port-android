@@ -23,27 +23,25 @@ jobs:
       - name: Download ROM
         run: |
           curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
-          if [ ! -s baserom.us.z64 ]; then echo "ROM file is empty or missing"; exit 1; fi
+          if [ ! -s baserom.us.z64 ]; then echo "ROM is missing!"; exit 1; fi
 
       - name: Build APK
         run: |
           make -C tools
-          # Try building. We use || true so we can handle the error manually if needed
-          make ANDROID=1 --jobs $(nproc) || true
+          # Some forks require specific flags. We try the most common ones.
+          make ANDROID=1 --jobs $(nproc)
 
-      - name: Prepare Folder
+      - name: Debug - List All Files
         run: |
-          mkdir -p Build_Output
-          # This finds any APK created and moves it to our folder
-          find build/ -name "*.apk" -exec cp {} Build_Output/sm64_android.apk \;
-
-      - name: Upload to Release
+          echo "Searching for APKs..."
+          find . -name "*.apk"
+          
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: Build_Output/sm64_android.apk
-          tag_name: build-${{ github.run_number }}
+          files: "**/*.apk"
+          tag_name: v1.${{ github.run_number }}
           name: SM64 Build #${{ github.run_number }}
-          body: "Installation file is ready below."
-          make_latest: true
+          body: "Click the .apk file below to download."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
