@@ -13,7 +13,9 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config git python3 wget zip binutils-aarch64-linux-gnu libsdl2-dev
+          # Added libusb-1.0-0-dev to fix the 'libusb.h' error
+          sudo apt-get install -y build-essential pkg-config git python3 wget zip \
+            binutils-aarch64-linux-gnu libsdl2-dev libusb-1.0-0-dev
 
       - name: Set up Android NDK
         uses: nttld/setup-ndk@v1
@@ -23,28 +25,35 @@ jobs:
       - name: Download ROM
         run: |
           curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
-          echo "Current file size:"
-          ls -lh baserom.us.z64
+          SIZE=$(stat -c%s "baserom.us.z64")
+          echo "ROM Size: $SIZE bytes"
+          if [ $SIZE -lt 8000000 ]; then
+            echo "ERROR: File is too small. Check your Dropbox link!"
+            exit 1
+          fi
 
       - name: Build Tools
         run: make -C tools
 
-      - name: Force Asset Extraction
+      - name: Build Full Game APK
         run: |
-          # We try to extract assets. If the hash fails, we force it with --skip-hash
-          python3 extract_assets.py us --skip-hash || echo "Asset extraction had warnings but continuing..."
+          # Clean any failed build attempts
+          make clean ANDROID=1 
+          # Extract assets
+          python3 extract_assets.py us
+          # Compile the APK
+          make ANDROID=1 ARCH=aarch64 --jobs $(nproc)
 
-      - name: Build APK
+      - name: Create Release Folder
         run: |
-          # We build the APK. If it fails here, the ROM format was truly incompatible.
-          make ANDROID=1 --jobs $(nproc)
+          mkdir -p Finished_APK
+          find build/ -name "*.apk" -exec cp {} Finished_APK/sm64_android_v8a.apk \;
 
-      - name: Create Release
-        if: success()
+      - name: Upload to Releases
         uses: softprops/action-gh-release@v2
         with:
-          files: "**/*.apk"
+          files: Finished_APK/sm64_android_v8a.apk
           tag_name: v1.${{ github.run_number }}
-          name: SM64 Build #${{ github.run_number }}
+          name: SM64 Android Build #${{ github.run_number }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
