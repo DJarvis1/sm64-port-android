@@ -26,36 +26,48 @@ jobs:
         run: |
           curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
 
-      - name: Generate All Assets
+      - name: Generate and Locate Assets
         run: |
-          # 1. Build the tools
+          # 1. Start fresh
+          make clean
           make -C tools
-          
-          # 2. Extract textures/sounds
           python3 extract_assets.py us
           
-          # 3. Create the directory structure manually to avoid "No rule" errors
-          mkdir -p build/us_pc/bin
-          mkdir -p build/us_pc/assets
+          # 2. Run the build but target ONLY the assets (works on most forks)
+          make VERSION=us -j$(nproc) assets || true
+          make VERSION=us -j$(nproc) bin || true
           
-          # 4. Run the PC build to generate ALL .c files. 
-          # We use '|| true' because it will fail at the very end when trying 
-          # to create a Linux executable, but it will create the .c files first.
-          make VERSION=us -j$(nproc) || true
+          # 3. DETECTIVE WORK: Find where mario_anim_data.c actually went
+          echo "Searching for generated assets..."
+          ANIM_PATH=$(find . -name "mario_anim_data.c" | head -n 1)
+          echo "Found anim data at: $ANIM_PATH"
+          
+          # 4. REPAIR: If it's in the wrong place, create the folder NDK wants and move it
+          mkdir -p build/us_pc/assets
+          mkdir -p build/us_pc/bin
+          
+          if [ -f "$ANIM_PATH" ]; then
+            cp -r $(dirname "$ANIM_PATH")/* build/us_pc/assets/ 2>/dev/null || true
+          fi
+          
+          # Also try to find and move skyboxes
+          SKY_PATH=$(find . -name "ccm_skybox.c" | head -n 1)
+          if [ -f "$SKY_PATH" ]; then
+             cp -r $(dirname "$SKY_PATH")/* build/us_pc/bin/ 2>/dev/null || true
+          fi
 
       - name: Locate and Build Android
         run: |
           REAL_MK=$(find . -name "Android.mk" | head -n 1)
           MK_DIR=$(dirname "$REAL_MK")
           
-          # Create a basic manifest
           cat <<EOF > "$MK_DIR/AndroidManifest.xml"
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.vdavid003.sm64port">
               <uses-sdk android:minSdkVersion="21" />
           </manifest>
           EOF
 
-          # Start the actual NDK build
+          # Build with NDK
           ndk-build \
             NDK_PROJECT_PATH="$MK_DIR" \
             APP_BUILD_SCRIPT="$REAL_MK" \
@@ -67,7 +79,6 @@ jobs:
       - name: Package Output
         run: |
           mkdir -p Finished_APK
-          # Find the compiled .so files (the actual game engine)
           find . -name "*.so" -exec cp {} Finished_APK/ \;
           if [ -n "$(ls -A Finished_APK/*.so 2>/dev/null)" ]; then
              zip -r sm64_android_libs.zip Finished_APK/
