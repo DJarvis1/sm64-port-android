@@ -9,22 +9,15 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-      # 1. Set Java 17 first to keep the Android SDK tools happy
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # 2. Now install the basic Linux tools
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config git python3 wget zip \
-            binutils-aarch64-linux-gnu libsdl2-dev libusb-1.0-0-dev
-
-      # 3. Set up the Android environment
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
@@ -33,6 +26,12 @@ jobs:
         with:
           ndk-version: r21e
 
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config git python3 wget zip \
+            binutils-aarch64-linux-gnu libsdl2-dev libusb-1.0-0-dev
+
       - name: Download ROM
         run: |
           curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
@@ -40,19 +39,22 @@ jobs:
       - name: Build Tools
         run: make -C tools
 
-      - name: Build Full Game APK
+      - name: Extract Assets
+        run: python3 extract_assets.py us
+
+      - name: Build Android APK
         run: |
-          python3 extract_assets.py us
-          # Building the APK specifically
-          make ANDROID=1 ARCH=aarch64 --jobs $(nproc)
+          # We use the Gradle wrapper which is the standard way to build Android apps
+          # This forces the project to actually package an APK
+          chmod +x gradlew
+          ./gradlew assembleDebug
 
       - name: Locate and Prepare APK
         run: |
           mkdir -p Finished_APK
-          # Deep search for the file
+          # Gradle usually puts APKs in app/build/outputs/apk/debug/
+          find . -name "*.apk" -ls
           find . -name "*.apk" -exec cp {} Finished_APK/sm64_android.apk \;
-          # Show us if it found it in the logs
-          ls -R Finished_APK/
 
       - name: Upload to Releases
         uses: softprops/action-gh-release@v2
