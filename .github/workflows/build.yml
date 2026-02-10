@@ -26,43 +26,36 @@ jobs:
         run: |
           curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
 
-      - name: Manual Asset Generation
+      - name: Force Asset Compilation
         run: |
-          # 1. Build the required tools
+          # 1. Prepare Tools
           make -C tools
-          
-          # 2. Extract textures (This creates the bin/ and assets/ folders)
           python3 extract_assets.py us
           
-          # 3. Create the exact directory structure the NDK is crying about
+          # 2. Pre-create the target directories
           mkdir -p build/us_pc/assets
           mkdir -p build/us_pc/bin
           
-          # 4. MANUALLY run the converters
-          # Convert Mario's animations
-          python3 tools/mario_anims_converter.py > build/us_pc/assets/mario_anim_data.c
-          
-          # Convert the demo data
-          python3 tools/demo_data_converter.py assets/demo_data.json -DVERSION_US > build/us_pc/assets/demo_data.c
-          
-          # Convert the skyboxes (This uses skyconv)
-          ./tools/skyconv --type rgba16 --width 32 --height 32 textures/skyboxes/ccm_skybox.png build/us_pc/bin/ccm_skybox.c || true
-          
-          # 5. Verify they exist
-          ls -R build/us_pc/
+          # 3. Use the Makefile to generate all .c files in the bin and levels folders
+          # We tell it TARGET_ANDROID=0 so it uses the 'us_pc' naming convention
+          # We use '|| true' because it will fail to link, but the .c files will be born
+          make VERSION=us TARGET_ANDROID=0 -j$(nproc) build/us_pc/bin/ccm_skybox.c
+          make VERSION=us TARGET_ANDROID=0 -j$(nproc) || true
 
       - name: Locate and Build Android
         run: |
           REAL_MK=$(find . -name "Android.mk" | head -n 1)
           MK_DIR=$(dirname "$REAL_MK")
           
+          # Ensure Manifest exists
           cat <<EOF > "$MK_DIR/AndroidManifest.xml"
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.vdavid003.sm64port">
               <uses-sdk android:minSdkVersion="21" />
           </manifest>
           EOF
 
-          # Build with NDK
+          # Start NDK build
+          # We add the external SDL2 path to satisfy the 'undefined modules' warning
           ndk-build \
             NDK_PROJECT_PATH="$MK_DIR" \
             APP_BUILD_SCRIPT="$REAL_MK" \
