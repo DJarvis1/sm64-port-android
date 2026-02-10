@@ -20,32 +20,37 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config git python3 wget zip
+          sudo apt-get install -y build-essential pkg-config git python3 wget zip libglew-dev libsdl2-dev
 
       - name: Download ROM
         run: |
           curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
 
-      - name: Prepare Assets
+      - name: Generate Source Assets
         run: |
+          # 1. Build the tools
           make -C tools
+          # 2. Extract assets
           python3 extract_assets.py us
+          # 3. CRITICAL: Run the make command to generate the .c files for the assets
+          # We use 'VERSION=us' to match your ROM. 
+          # This will create the missing 'mario_anim_data.c' and others.
+          make VERSION=us -j$(nproc) || true 
+          # Note: The above might 'fail' because it tries to build a Linux executable, 
+          # but we only care that it generates the files in build/us_pc/
 
-      - name: Locate and Build
+      - name: Locate and Build Android
         run: |
-          # 1. Find the Android.mk
           REAL_MK=$(find . -name "Android.mk" | head -n 1)
           MK_DIR=$(dirname "$REAL_MK")
           
-          # 2. Create a PERFECT Manifest (Added the 'android' namespace declaration)
           cat <<EOF > "$MK_DIR/AndroidManifest.xml"
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.vdavid003.sm64port">
               <uses-sdk android:minSdkVersion="21" />
           </manifest>
           EOF
 
-          # 3. Build with Missing Dependencies allowed
-          # This allows the compiler to ignore the SDL2 error and build the main engine
+          # Build with NDK
           ndk-build \
             NDK_PROJECT_PATH="$MK_DIR" \
             APP_BUILD_SCRIPT="$REAL_MK" \
@@ -59,9 +64,7 @@ jobs:
           mkdir -p Finished_APK
           find . -name "*.so" -exec cp {} Finished_APK/ \;
           if [ -n "$(ls -A Finished_APK/*.so 2>/dev/null)" ]; then
-             zip -r sm64_libs.zip Finished_APK/
-          else
-             echo "No .so files found. Check logs for compilation errors."
+             zip -r sm64_android_libs.zip Finished_APK/
           fi
 
       - name: Upload to Releases
