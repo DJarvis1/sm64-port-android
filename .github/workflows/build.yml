@@ -20,7 +20,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config git python3 wget zip libglew-dev libsdl2-dev
+          sudo apt-get install -y build-essential pkg-config git python3 wget zip libsdl2-dev libaudiofile-dev
 
       - name: Download ROM
         run: |
@@ -28,29 +28,38 @@ jobs:
 
       - name: Generate Source Assets
         run: |
-          # 1. Build the tools
+          # 1. Build the tools (skyconv, mio0, etc)
           make -C tools
-          # 2. Extract assets
+          
+          # 2. Extract the base assets
           python3 extract_assets.py us
-          # 3. CRITICAL: Run the make command to generate the .c files for the assets
-          # We use 'VERSION=us' to match your ROM. 
-          # This will create the missing 'mario_anim_data.c' and others.
-          make VERSION=us -j$(nproc) || true 
-          # Note: The above might 'fail' because it tries to build a Linux executable, 
-          # but we only care that it generates the files in build/us_pc/
+          
+          # 3. MANUALLY generate the missing C files the NDK is begging for
+          # This runs the asset compiler specifically for animations and demos
+          make VERSION=us build/us_pc/assets/mario_anim_data.c -j$(nproc)
+          make VERSION=us build/us_pc/assets/demo_data.c -j$(nproc)
+          
+          # 4. Verify the file actually exists now
+          if [ -f "build/us_pc/assets/mario_anim_data.c" ]; then
+            echo "SUCCESS: Asset C files generated."
+          else
+            echo "ERROR: Failed to generate assets."
+            exit 1
+          fi
 
       - name: Locate and Build Android
         run: |
           REAL_MK=$(find . -name "Android.mk" | head -n 1)
           MK_DIR=$(dirname "$REAL_MK")
           
+          # Ensure a valid manifest exists
           cat <<EOF > "$MK_DIR/AndroidManifest.xml"
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.vdavid003.sm64port">
               <uses-sdk android:minSdkVersion="21" />
           </manifest>
           EOF
 
-          # Build with NDK
+          # Build with NDK and ignore SDL2 for now
           ndk-build \
             NDK_PROJECT_PATH="$MK_DIR" \
             APP_BUILD_SCRIPT="$REAL_MK" \
