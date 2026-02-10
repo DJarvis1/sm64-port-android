@@ -20,41 +20,36 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config git python3 wget zip libsdl2-dev libaudiofile-dev libglew-dev
+          sudo apt-get install -y build-essential pkg-config git python3 wget zip libsdl2-dev
 
       - name: Download ROM
         run: |
           curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
 
-      - name: Generate and Locate Assets
+      - name: Manual Asset Generation
         run: |
-          # 1. Start fresh
-          make clean
+          # 1. Build the required tools
           make -C tools
+          
+          # 2. Extract textures (This creates the bin/ and assets/ folders)
           python3 extract_assets.py us
           
-          # 2. Run the build but target ONLY the assets (works on most forks)
-          make VERSION=us -j$(nproc) assets || true
-          make VERSION=us -j$(nproc) bin || true
-          
-          # 3. DETECTIVE WORK: Find where mario_anim_data.c actually went
-          echo "Searching for generated assets..."
-          ANIM_PATH=$(find . -name "mario_anim_data.c" | head -n 1)
-          echo "Found anim data at: $ANIM_PATH"
-          
-          # 4. REPAIR: If it's in the wrong place, create the folder NDK wants and move it
+          # 3. Create the exact directory structure the NDK is crying about
           mkdir -p build/us_pc/assets
           mkdir -p build/us_pc/bin
           
-          if [ -f "$ANIM_PATH" ]; then
-            cp -r $(dirname "$ANIM_PATH")/* build/us_pc/assets/ 2>/dev/null || true
-          fi
+          # 4. MANUALLY run the converters
+          # Convert Mario's animations
+          python3 tools/mario_anims_converter.py > build/us_pc/assets/mario_anim_data.c
           
-          # Also try to find and move skyboxes
-          SKY_PATH=$(find . -name "ccm_skybox.c" | head -n 1)
-          if [ -f "$SKY_PATH" ]; then
-             cp -r $(dirname "$SKY_PATH")/* build/us_pc/bin/ 2>/dev/null || true
-          fi
+          # Convert the demo data
+          python3 tools/demo_data_converter.py assets/demo_data.json -DVERSION_US > build/us_pc/assets/demo_data.c
+          
+          # Convert the skyboxes (This uses skyconv)
+          ./tools/skyconv --type rgba16 --width 32 --height 32 textures/skyboxes/ccm_skybox.png build/us_pc/bin/ccm_skybox.c || true
+          
+          # 5. Verify they exist
+          ls -R build/us_pc/
 
       - name: Locate and Build Android
         run: |
@@ -88,8 +83,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            Finished_APK/*.so
-            *.zip
+             Finished_APK/*.so
+             *.zip
           tag_name: v1.${{ github.run_number }}
           name: SM64 Android Build #${{ github.run_number }}
         env:
