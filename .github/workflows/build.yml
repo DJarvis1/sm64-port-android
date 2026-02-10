@@ -9,6 +9,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -16,10 +18,10 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Set up Android SDK
+      - name: Set up Android SDK & NDK
         uses: android-actions/setup-android@v3
-
-      - name: Set up Android NDK
+      
+      - name: Set up NDK
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r21e
@@ -34,25 +36,34 @@ jobs:
         run: |
           curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
 
-      - name: Build Tools
-        run: make -C tools
-
-      - name: Build Full Game
+      - name: Prepare Assets
         run: |
+          make -C tools
           python3 extract_assets.py us
-          # We use the generic make command but with Android flags enabled
-          make ANDROID=1 TARGET_ANDROID=1 ARCH=aarch64 --jobs $(nproc)
 
-      - name: Debug - List All Files
+      - name: Build Android APK
         run: |
-          echo "--- Searching for any created APK or Binaries ---"
-          find . -maxdepth 4 -not -path '*/.*'
+          # If a 'gradlew' exists anywhere, find it and run it
+          GRADLE_PATH=$(find . -name gradlew | head -n 1)
+          if [ -z "$GRADLE_PATH" ]; then
+            echo "No gradlew found, trying standard make"
+            make ANDROID=1 ARCH=aarch64 --jobs $(nproc)
+          else
+            echo "Found gradlew at $GRADLE_PATH"
+            chmod +x "$GRADLE_PATH"
+            cd $(dirname "$GRADLE_PATH")
+            ./gradlew assembleDebug
+          fi
+
+      - name: Final Search and Release
+        run: |
           mkdir -p Finished_APK
-          # Try to find the APK and copy it
+          find . -name "*.apk" -ls
           find . -name "*.apk" -exec cp {} Finished_APK/sm64_android.apk \;
 
       - name: Upload to Releases
         uses: softprops/action-gh-release@v2
+        if: success()
         with:
           files: Finished_APK/sm64_android.apk
           tag_name: v1.${{ github.run_number }}
