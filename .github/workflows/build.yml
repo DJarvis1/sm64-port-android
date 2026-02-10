@@ -20,42 +20,58 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config git python3 wget zip libsdl2-dev
+          sudo apt-get install -y build-essential pkg-config git python3 wget zip libsdl2-dev libaudiofile-dev
 
       - name: Download ROM
         run: |
           curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
 
-      - name: Force Asset Compilation
+      - name: Manual Asset Generation
         run: |
-          # 1. Prepare Tools
+          # 1. Build the tools (we need skyconv and others)
           make -C tools
+          
+          # 2. Extract base assets
           python3 extract_assets.py us
           
-          # 2. Pre-create the target directories
+          # 3. Force create the directory structure
           mkdir -p build/us_pc/assets
           mkdir -p build/us_pc/bin
           
-          # 3. Use the Makefile to generate all .c files in the bin and levels folders
-          # We tell it TARGET_ANDROID=0 so it uses the 'us_pc' naming convention
-          # We use '|| true' because it will fail to link, but the .c files will be born
-          make VERSION=us TARGET_ANDROID=0 -j$(nproc) build/us_pc/bin/ccm_skybox.c
-          make VERSION=us TARGET_ANDROID=0 -j$(nproc) || true
+          # 4. Manually run the converters that the Makefile is skipping
+          # Mario Anims
+          python3 tools/mario_anims_converter.py > build/us_pc/assets/mario_anim_data.c
+          
+          # Demo Data
+          python3 tools/demo_data_converter.py assets/demo_data.json -DVERSION_US > build/us_pc/assets/demo_data.c
+          
+          # Skyboxes (Iterate through all pngs in the skybox folder)
+          for f in textures/skyboxes/*.png; do
+            filename=$(basename "$f" .png)
+            ./tools/skyconv --type rgba16 --width 32 --height 32 "$f" "build/us_pc/bin/${filename}.c" || true
+          done
 
-      - name: Locate and Build Android
+      - name: Prepare Android and SDL2
         run: |
           REAL_MK=$(find . -name "Android.mk" | head -n 1)
           MK_DIR=$(dirname "$REAL_MK")
           
-          # Ensure Manifest exists
+          # Fix the SDL2 'undefined module' error by cloning the source into the JNI folder
+          if [ ! -d "$MK_DIR/SDL2" ]; then
+            git clone https://github.com/libsdl-org/SDL.git -b SDL2 "$MK_DIR/SDL2"
+          fi
+
           cat <<EOF > "$MK_DIR/AndroidManifest.xml"
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.vdavid003.sm64port">
               <uses-sdk android:minSdkVersion="21" />
           </manifest>
           EOF
 
-          # Start NDK build
-          # We add the external SDL2 path to satisfy the 'undefined modules' warning
+      - name: Build with NDK
+        run: |
+          REAL_MK=$(find . -name "Android.mk" | head -n 1)
+          MK_DIR=$(dirname "$REAL_MK")
+          
           ndk-build \
             NDK_PROJECT_PATH="$MK_DIR" \
             APP_BUILD_SCRIPT="$REAL_MK" \
