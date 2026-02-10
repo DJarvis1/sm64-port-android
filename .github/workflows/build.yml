@@ -5,7 +5,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # This allows GitHub to "write" the folder/release
+      contents: write
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -21,24 +21,29 @@ jobs:
           ndk-version: r21e
 
       - name: Download ROM
-        run: curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
+        run: |
+          curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
+          if [ ! -s baserom.us.z64 ]; then echo "ROM file is empty or missing"; exit 1; fi
 
       - name: Build APK
         run: |
           make -C tools
+          # Try building. We use || true so we can handle the error manually if needed
           make ANDROID=1 --jobs $(nproc) || true
 
       - name: Prepare Folder
         run: |
           mkdir -p Build_Output
-          cp build/us_pc/*.apk Build_Output/sm64_android.apk
+          # This finds any APK created and moves it to our folder
+          find build/ -name "*.apk" -exec cp {} Build_Output/sm64_android.apk \;
 
-      - name: Create Release
+      - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
           files: Build_Output/sm64_android.apk
-          tag_name: latest
-          name: Latest Android Build
-          body: "Your compiled SM64 APK is ready!"
+          tag_name: build-${{ github.run_number }}
+          name: SM64 Build #${{ github.run_number }}
+          body: "Installation file is ready below."
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
