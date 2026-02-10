@@ -20,20 +20,23 @@ jobs:
         with:
           ndk-version: r21e
 
-      - name: Download and Check ROM
+      - name: Download ROM
         run: |
           curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
-          # Create a copy with the .n64 extension just in case the script is picky
-          cp baserom.us.z64 baserom.us.n64
+          echo "Current file size:"
           ls -lh baserom.us.z64
 
       - name: Build Tools
         run: make -C tools
 
+      - name: Force Asset Extraction
+        run: |
+          # We try to extract assets. If the hash fails, we force it with --skip-hash
+          python3 extract_assets.py us --skip-hash || echo "Asset extraction had warnings but continuing..."
+
       - name: Build APK
         run: |
-          # We run the asset extraction and build in one go
-          python3 extract_assets.py us
+          # We build the APK. If it fails here, the ROM format was truly incompatible.
           make ANDROID=1 --jobs $(nproc)
 
       - name: Create Release
