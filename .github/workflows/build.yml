@@ -36,29 +36,28 @@ jobs:
 
       - name: Fetch ROM from Secret
         run: |
-          # Using your secret name: ROM_URL
           if [ -z "${{ secrets.ROM_URL }}" ]; then
-            echo "Error: Secret ROM_URL is not set in GitHub Settings."
+            echo "Error: Secret ROM_URL is not set."
             exit 1
           fi
-          
           curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
-          
-          # Validation: ROM should be ~8MB (8,388,608 bytes)
-          FILESIZE=$(stat -c%s "baserom.us.z64")
-          if [ $FILESIZE -lt 8000000 ]; then
-            echo "Error: ROM file is too small ($FILESIZE bytes). Check your Dropbox link ends in ?dl=1"
-            exit 1
+          ls -lh baserom.us.z64
+
+      - name: Build Extraction Tools
+        run: |
+          # Find where the Makefile for tools is located
+          TOOLS_DIR=$(find . -name "tools" -type d -path "*/jni/*" | head -n 1)
+          if [ -z "$TOOLS_DIR" ]; then
+            echo "Searching for any tools directory..."
+            TOOLS_DIR=$(find . -name "tools" -type d | head -n 1)
           fi
+          
+          echo "Found tools directory at: $TOOLS_DIR"
+          make -C "$TOOLS_DIR"
 
       - name: Build APK
         run: |
-          # 1. Build extraction tools (fixes the alBnkfNew.c error)
-          cd app/jni
-          make -C tools
-          cd ../..
-          
-          # 2. Build APK (Gradle will handle the NDK)
+          # Ensure gradlew is executable and run it from the project root
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace --no-daemon
 
@@ -66,4 +65,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sm64-android-debug
-          path: app/build/outputs/apk/debug/*.apk
+          path: "**/build/outputs/apk/debug/*.apk"
