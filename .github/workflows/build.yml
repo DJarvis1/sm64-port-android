@@ -24,45 +24,43 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config libusb-1.0-0-dev libsdl2-dev
+          sudo apt-get install -y build-essential pkg-config libusb-1.0-0-dev libsdl2-dev python3 tree
 
       - name: Fetch ROM from Secret
         run: |
           curl -L "${{ secrets.ROM_URL }}" -o baserom.us.z64
-          # The extraction script usually looks for the ROM in the same folder as the Makefile
-          # Let's put a copy everywhere important just to be safe
-          find . -name "jni" -exec cp baserom.us.z64 {}/.. \; 2>/dev/null || true
+          # Copy ROM to every possible directory where a Makefile might want it
+          find . -type d -not -path '*/.*' -exec cp baserom.us.z64 {} \; 2>/dev/null || true
 
       - name: Build Extraction Tools
         run: |
-          TOOLS_DIR=$(find . -name "tools" -type d -path "*/jni/*" | head -n 1)
-          if [ -z "$TOOLS_DIR" ]; then TOOLS_DIR=$(find . -name "tools" -type d | head -n 1); fi
-          echo "Found tools at: $TOOLS_DIR"
-          make -C "$TOOLS_DIR"
+          # We know where this is now thanks to the last run
+          make -C tools
 
       - name: Build APK
         run: |
-          # Find the gradlew file
+          # List files to debug if it fails again
+          echo "Listing repository structure:"
+          tree -L 2
+          
+          # Try to find gradlew and run it
           GRADLE_PATH=$(find . -name "gradlew" | head -n 1)
+          
           if [ -z "$GRADLE_PATH" ]; then
-            echo "Error: Could not find gradlew in the repository."
-            exit 1
+            echo "Searching for build.gradle instead..."
+            GRADLE_DIR=$(find . -name "build.gradle" -exec dirname {} \; | head -n 1)
+            cd "$GRADLE_DIR"
+            # If gradlew is missing, we can try to use the system gradle
+            gradle assembleDebug --stacktrace
+          else
+            echo "Found Gradle at: $GRADLE_PATH"
+            chmod +x "$GRADLE_PATH"
+            cd $(dirname "$GRADLE_PATH")
+            ./gradlew assembleDebug --stacktrace --no-daemon
           fi
-          
-          GRADLE_DIR=$(dirname "$GRADLE_PATH")
-          echo "Found Gradle at: $GRADLE_DIR"
-          
-          cd "$GRADLE_DIR"
-          chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
